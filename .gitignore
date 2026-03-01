@@ -21,3 +21,9 @@ Thumbs.db
 node_modules/
 dist/
 backend/bin/
+
+GEMINI.md
+
+.gemini/
+.github/
+gha-creds-*.json

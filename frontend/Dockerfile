@@ -1,5 +1,5 @@
-# Build stage
-FROM node:20-alpine AS build-stage
+# Development stage
+FROM node:20-alpine AS development-stage
 
 WORKDIR /app
 
@@ -14,6 +14,15 @@ RUN pnpm install
 
 # Copy the rest of the source code
 COPY . .
+
+# Expose the Vite dev port
+EXPOSE 5173
+
+# Run Vite in dev mode
+CMD ["pnpm", "run", "dev", "--host"]
+
+# Build stage
+FROM development-stage AS build-stage
 
 # Build the application
 RUN pnpm run build

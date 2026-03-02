@@ -22,4 +22,3 @@ go.work.sum
 
 # env files
 .env
-.env.*

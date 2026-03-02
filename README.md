@@ -1,142 +1,123 @@
 # Swiftly
 
-Swiftly is a modern, high-performance e-commerce platform built with a robust Go backend and a reactive Vue 3 frontend. Designed for speed and scalability, Swiftly leverages a monorepo architecture to streamline development and deployment.
+Swiftly is a modern, high-performance e-commerce platform built with a robust Go backend and a type-safe Vue 3 frontend. Designed for speed and scalability, Swiftly leverages a monorepo architecture to streamline development and deployment.
 
 ## 🚀 Features (In Development)
 
-- **Product Management:** Browse and search through a diverse catalog of items.
-- **Shopping Cart:** Seamlessly add, remove, and manage items before purchase.
-- **User Authentication:** Secure access for shoppers and administrators.
-- **Checkout & Payments:** Integrated payment gateway for secure transactions.
-- **Order Tracking:** Real-time updates on order status and delivery.
+- **User Authentication:** Secure Sign In, Register, and Google Login integration.
+- **Account Recovery:** Advanced "Forgot Password" flow supporting Email, Username, or Phone Number.
+- **Security:** Token Blacklisting with Redis and full-stack input sanitization.
+- **Type Safety:** Full-stack type safety from Go backend to TypeScript frontend.
 
 ## 🛠 Tech Stack
 
 ### Backend
-
-- **Language:** [Go 1.25.6](https://golang.org/)
-- **Framework:** Standard Library (`net/http`)
-- **Database:** [PostgreSQL 17](https://www.postgresql.org/)
-- **Driver:** [pgx/v5](https://github.com/jackc/pgx) (Native PostgreSQL driver)
-- **Migrations:** [golang-migrate](https://github.com/golang-migrate/migrate)
+- **Language:** Go 1.25.6
+- **Database:** PostgreSQL 17
+- **Caching/Security:** Redis (Alpine)
 - **Hot Reload:** [Air](https://github.com/air-verse/air)
-- **Architecture:** Feature-based modular architecture with Handler, Service, and Repository layers.
 
 ### Frontend
+- **Framework:** Vue 3 (TypeScript, Composition API)
+- **State:** Pinia
+- **Styling:** Tailwind CSS v4
+- **Build Tool:** Vite
 
-- **Framework:** [Vue 3](https://vuejs.org/) (Composition API)
-- **Build Tool:** [Vite](https://vitejs.dev/)
-- **Package Manager:** [pnpm](https://pnpm.io/)
-- **Testing:** [Vitest](https://vitest.dev/) and [@vue/test-utils](https://test-utils.vuejs.org/)
+---
+
+## 🐳 Docker Workflow (Detailed Guide)
+
+This project uses Docker Compose to orchestrate all services. Using Docker ensures that every developer has the exact same environment.
+
+### 1. Core Commands
+
+| Action | Command |
+| :--- | :--- |
+| **Start Everything** | `docker compose up -d` |
+| **Start & Rebuild** | `docker compose up -d --build` |
+| **Stop Everything** | `docker compose down` |
+| **Stop & Wipe Data** | `docker compose down -v` |
+| **Check Status** | `docker compose ps` |
+| **View Logs** | `docker compose logs -f` |
+
+### 2. Managing Individual Services
+You don't always need to restart everything. You can target specific services: `backend`, `frontend`, `redis`, or `migrate`.
+
+- **Rebuild only Backend:** `docker compose up -d --build backend`
+- **Rebuild only Frontend:** `docker compose up -d --build frontend`
+- **Restart Redis:** `docker compose restart redis`
+
+### 3. Database Migrations
+Migrations are handled by a dedicated `migrate` service.
+
+- **Run Up Migrations:** `docker compose run --rm migrate up`
+- **Rollback (Down):** `docker compose run --rm migrate down`
+- **Fix "Dirty" State:** `docker compose run --rm migrate force <version>`
+
+### 4. Interactive CLI Access
+Sometimes you need to run commands inside the containers:
+
+- **Redis CLI:** `docker compose exec redis redis-cli`
+- **Database (psql):** `docker compose exec db psql -U user -d swiftly`
+- **Backend Shell:** `docker compose exec backend sh`
+
+---
+
+## 🏁 Getting Started
+
+### Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Node.js](https://nodejs.org/) & [pnpm](https://pnpm.io/) (for local dev)
+
+### Setup Steps
+
+1.  **Clone & Enter:**
+    ```bash
+    git clone https://github.com/yourusername/swiftly.git
+    cd swiftly
+    ```
+
+2.  **Environment Setup:**
+    *   `cp backend/.env.sample backend/.env`
+    *   `cp frontend/.env.example frontend/.env`
+    *   *Make sure to update `GOOGLE_CLIENT_ID` and `JWT_SECRET`.*
+
+3.  **Launch:**
+    ```bash
+    docker compose up -d --build
+    ```
+
+4.  **Migrate:**
+    ```bash
+    docker compose run --rm migrate
+    ```
+
+---
 
 ## 📁 Project Structure
 
 ```text
 .
 ├── backend/            # Go backend service
-│   ├── cmd/
-│   │   ├── api/        # API entry point
-│   │   ├── migrate/    # Migration tool
-│   │   └── seed/       # Database seeder
-│   ├── internal/       # Modular features (e.g., user)
-│   ├── migrations/     # SQL migration files (.up.sql, .down.sql)
-│   ├── Makefile        # Backend management commands
-│   ├── .air.toml       # Air configuration for hot reload
-│   └── go.mod          # Go module definitions
-├── frontend/           # Vue 3 frontend application
-│   ├── src/            # Application source code
-│   ├── public/         # Static assets
-│   ├── vitest.config.js # Vitest configuration
-│   └── package.json    # Frontend dependencies and scripts
+│   ├── cmd/            # Entry points (API, Migrations)
+│   ├── internal/       # Modular logic (Handler, Service, Repository)
+│   └── migrations/     # SQL migration files
+├── frontend/           # Vue 3 TypeScript application
+│   ├── src/            # Components, stores, types, views
+│   └── types/          # Modular TypeScript interfaces
 ├── docker-compose.yaml # Docker orchestration
 └── README.md           # Project documentation
 ```
 
-## 🏁 Getting Started
-
-### Prerequisites
-
-- [Go 1.25.6](https://golang.org/dl/) or later
-- [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/installation)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [PostgreSQL](https://www.postgresql.org/download/) (if running locally without Docker)
-
-### Development with Docker (Recommended)
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/yourusername/swiftly.git
-    cd swiftly
-    ```
-
-2.  **Configure environment:**
-    ```bash
-    cp backend/.env.sample backend/.env
-    # Update DATABASE_URL in backend/.env to point to your database
-    ```
-
-3.  **Run with Hot Reload:**
-    ```bash
-    docker compose up --build
-    ```
-    - **Backend:** `http://localhost:8080` (Auto-reloads on file change via Air)
-    - **Frontend:** `http://localhost:5173` (HMR enabled)
-
-4.  **Run Migrations:**
-    ```bash
-    docker compose run --rm migrate
-    ```
-
-### Local Development (Without Docker)
-
-1.  **Backend:**
-    ```bash
-    cd backend
-    go run cmd/migrate/main.go up
-    go run cmd/api/main.go
-    ```
-
-2.  **Frontend:**
-    ```bash
-    cd frontend
-    pnpm install
-    pnpm run dev
-    ```
-
-## 🗄 Database Management
-
-Database schema is managed via **golang-migrate**.
-
-- **Run migrations:** `make migrate-up` (or `go run cmd/migrate/main.go up`)
-- **Rollback migration:** `make migrate-down` (or `go run cmd/migrate/main.go down`)
-- **Seed data:** `make seed` (or `go run cmd/seed/main.go`)
-
-## 🧪 Testing
-
-### Backend (Go)
-```bash
-cd backend
-make test
-```
-
-### Frontend (Vue 3)
-```bash
-cd frontend
-pnpm test
-```
-
 ## 📝 API Standards
-
-The project uses a standardized JSON response structure:
+Standard JSON response:
 ```json
 {
   "success": true,
   "message": "Action completed successfully",
-  "data": { ... },
-  "errors": null
+  "data": { ... }
 }
 ```
 
 ## 📄 License
-
 This project is licensed under the MIT License.

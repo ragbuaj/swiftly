@@ -24,7 +24,7 @@ build:
 	go build -o bin/api cmd/api/main.go
 
 test:
-	go test ./... -v
+	go test ./test/... -v
 
 migrate-up:
 	go run cmd/migrate/main.go

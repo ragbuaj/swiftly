@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.env.sample
+Dockerfile
+vendor/
+node_modules/
+*.exe
+*.test
+*.out

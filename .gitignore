@@ -27,3 +27,6 @@ GEMINI.md
 .gemini/
 .github/
 gha-creds-*.json
+
+# Backend temporary files
+backend/tmp/

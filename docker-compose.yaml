@@ -1,0 +1,46 @@
+services:
+  backend:
+    build: 
+      context: ./backend
+      target: builder # Use builder stage because it has Air installed
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend:/app
+    command: air -c .air.toml
+    networks:
+      - swiftly-network
+
+  migrate:
+    build: 
+      context: ./backend
+      target: builder
+    env_file:
+      - ./backend/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: go run cmd/migrate/main.go
+    networks:
+      - swiftly-network
+
+  frontend:
+    build: 
+      context: ./frontend
+    ports:
+      - "5173:5173" # Map to Vite dev port
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Don't overwrite node_modules from host
+    command: pnpm run dev
+    depends_on:
+      - backend
+    networks:
+      - swiftly-network
+
+networks:
+  swiftly-network:
+    driver: bridge

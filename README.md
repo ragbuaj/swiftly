@@ -15,17 +15,18 @@ Swiftly is a modern, high-performance e-commerce platform built with a robust Go
 ### Backend
 
 - **Language:** [Go 1.25.6](https://golang.org/)
-- **Framework:** Standard Library (`net/http`) for lightweight, efficient API development.
-- **Database:** [Supabase](https://supabase.com/) (PostgreSQL)
-- **Migrations:** [Goose](https://github.com/pressly/goose)
-- **Architecture:** Clean Architecture with handlers, services, and repositories.
+- **Framework:** Standard Library (`net/http`)
+- **Database:** [PostgreSQL 17](https://www.postgresql.org/)
+- **Driver:** [pgx/v5](https://github.com/jackc/pgx) (Native PostgreSQL driver)
+- **Migrations:** [golang-migrate](https://github.com/golang-migrate/migrate)
+- **Hot Reload:** [Air](https://github.com/air-verse/air)
+- **Architecture:** Feature-based modular architecture with Handler, Service, and Repository layers.
 
 ### Frontend
 
 - **Framework:** [Vue 3](https://vuejs.org/) (Composition API)
 - **Build Tool:** [Vite](https://vitejs.dev/)
 - **Package Manager:** [pnpm](https://pnpm.io/)
-- **Styling:** Vanilla CSS for maximum flexibility and performance.
 - **Testing:** [Vitest](https://vitest.dev/) and [@vue/test-utils](https://test-utils.vuejs.org/)
 
 ## 📁 Project Structure
@@ -33,18 +34,22 @@ Swiftly is a modern, high-performance e-commerce platform built with a robust Go
 ```text
 .
 ├── backend/            # Go backend service
-│   ├── cmd/api/        # Application entry point & tests
-│   ├── cmd/seed/       # Database seeder
-│   ├── migrations/     # SQL migration files
-│   ├── internal/       # Business logic, models, and repositories
+│   ├── cmd/
+│   │   ├── api/        # API entry point
+│   │   ├── migrate/    # Migration tool
+│   │   └── seed/       # Database seeder
+│   ├── internal/       # Modular features (e.g., user)
+│   ├── migrations/     # SQL migration files (.up.sql, .down.sql)
 │   ├── Makefile        # Backend management commands
+│   ├── .air.toml       # Air configuration for hot reload
 │   └── go.mod          # Go module definitions
 ├── frontend/           # Vue 3 frontend application
 │   ├── src/            # Application source code
-│   │   └── components/__tests__/ # Component unit tests
 │   ├── public/         # Static assets
+│   ├── vitest.config.js # Vitest configuration
 │   └── package.json    # Frontend dependencies and scripts
-└── GEMINI.md           # Internal development guidelines
+├── docker-compose.yaml # Docker orchestration
+└── README.md           # Project documentation
 ```
 
 ## 🏁 Getting Started
@@ -54,73 +59,83 @@ Swiftly is a modern, high-performance e-commerce platform built with a robust Go
 - [Go 1.25.6](https://golang.org/dl/) or later
 - [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/installation)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [Goose CLI](https://github.com/pressly/goose) (optional, for manual migrations)
+- [PostgreSQL](https://www.postgresql.org/download/) (if running locally without Docker)
 
-### Installation & Development
+### Development with Docker (Recommended)
 
 1.  **Clone the repository:**
-
     ```bash
     git clone https://github.com/yourusername/swiftly.git
     cd swiftly
     ```
 
-2.  **Backend Setup:**
-
+2.  **Configure environment:**
     ```bash
-    cd backend
-    cp .env.sample .env # Update with your Supabase credentials and DATABASE_URL
-    make migrate-up     # Apply database migrations
-    make seed           # (Optional) Seed the database with initial data
-    make run            # Start the API server
+    cp backend/.env.sample backend/.env
+    # Update DATABASE_URL in backend/.env to point to your database
     ```
 
-    The API will be available at `http://localhost:8080/api/health`.
-
-3.  **Frontend Setup:**
-
+3.  **Run with Hot Reload:**
     ```bash
-    cd ../frontend
+    docker compose up --build
+    ```
+    - **Backend:** `http://localhost:8080` (Auto-reloads on file change via Air)
+    - **Frontend:** `http://localhost:5173` (HMR enabled)
+
+4.  **Run Migrations:**
+    ```bash
+    docker compose run --rm migrate
+    ```
+
+### Local Development (Without Docker)
+
+1.  **Backend:**
+    ```bash
+    cd backend
+    go run cmd/migrate/main.go up
+    go run cmd/api/main.go
+    ```
+
+2.  **Frontend:**
+    ```bash
+    cd frontend
     pnpm install
     pnpm run dev
     ```
 
-    The application will typically be available at `http://localhost:5173`.
-
 ## 🗄 Database Management
 
-Backend database schema is managed via **Goose** migrations. All migration files are located in `backend/migrations/`.
+Database schema is managed via **golang-migrate**.
 
-- **Run migrations:** `make migrate-up`
-- **Rollback migration:** `make migrate-down`
-- **Check status:** `make migrate-status`
-- **Seed data:** `make seed`
-- **Create new migration:** `make migrate-create NAME=your_migration_name`
-
-> **Note:** Ensure `DATABASE_URL` in your `.env` is set to your Supabase direct connection string.
+- **Run migrations:** `make migrate-up` (or `go run cmd/migrate/main.go up`)
+- **Rollback migration:** `make migrate-down` (or `go run cmd/migrate/main.go down`)
+- **Seed data:** `make seed` (or `go run cmd/seed/main.go`)
 
 ## 🧪 Testing
 
 ### Backend (Go)
-
 ```bash
 cd backend
 make test
 ```
 
 ### Frontend (Vue 3)
-
 ```bash
 cd frontend
 pnpm test
 ```
 
-## 📝 Logging
+## 📝 API Standards
 
-### Backend
-
-The backend includes a custom `LoggingMiddleware` that automatically logs all incoming HTTP requests:
-`[METHOD] PATH REMOTE_ADDR STATUS_CODE DURATION`
+The project uses a standardized JSON response structure:
+```json
+{
+  "success": true,
+  "message": "Action completed successfully",
+  "data": { ... },
+  "errors": null
+}
+```
 
 ## 📄 License
 

@@ -10,23 +10,50 @@ lerna-debug.log*
 # OS Files
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Editor/IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
 
-# Project specific
+# Dependency directories
 node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Build outputs
 dist/
+**/dist/
+**/dist-ssr/
 backend/bin/
 
-GEMINI.md
-
-.gemini/
-.github/
-gha-creds-*.json
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
+**/ .env.*
+!.env.example
+!.env.sample
 
 # Backend temporary files
 backend/tmp/
+**/tmp/
+*.test
+*.out
+
+# Infrastructure / Data
+minio-data/
+postgres-data/
+
+# Tools
+.gemini/
+!.gemini/settings.json
+.github/
+gha-creds-*.json

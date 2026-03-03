@@ -1,0 +1,12 @@
+ALTER TABLE users 
+    DROP COLUMN role,
+    DROP COLUMN status,
+    DROP COLUMN email_verified_at,
+    DROP COLUMN deleted_at,
+    DROP COLUMN date_of_birth,
+    DROP COLUMN gender,
+    DROP COLUMN newsletter_subscribed,
+    DROP COLUMN avatar_url,
+    DROP COLUMN bio,
+    DROP COLUMN default_shipping_address_id,
+    DROP COLUMN default_billing_address_id;

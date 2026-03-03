@@ -11,6 +11,8 @@ import (
 	"swiftly/backend/internal/database"
 	"swiftly/backend/internal/middleware"
 	"swiftly/backend/internal/pkg/response"
+	"swiftly/backend/internal/pkg/socialauth"
+	"swiftly/backend/internal/pkg/storage"
 	"swiftly/backend/internal/user/handler"
 	"swiftly/backend/internal/user/repository"
 	"swiftly/backend/internal/user/service"
@@ -33,10 +35,32 @@ func main() {
 	pool := database.GetPool()
 	defer database.Close()
 
+	// Initialize Redis
+	database.InitRedis()
+	defer database.CloseRedis()
+
+	// Initialize Storage
+	useSSL := os.Getenv("S3_USE_SSL") == "true"
+	uploader, err := storage.NewMinioUploader(
+		os.Getenv("S3_ENDPOINT"),
+		os.Getenv("S3_ACCESS_KEY"),
+		os.Getenv("S3_SECRET_KEY"),
+		os.Getenv("S3_BUCKET_NAME"),
+		os.Getenv("S3_PUBLIC_URL"),
+		useSSL,
+	)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize MinIO uploader: %v\n", err)
+	}
+
+	// Initialize Social Auth
+	socialRegistry := socialauth.NewRegistry()
+
 	// Initialize User Module
 	userRepo := repository.NewUserRepository(pool)
-	userService := service.NewUserService(userRepo)
-	userHandler := handler.NewUserHandler(userService)
+	activityRepo := repository.NewActivityRepository(pool)
+	userService := service.NewService(userRepo, activityRepo, uploader)
+	userHandler := handler.NewUserHandler(userService, socialRegistry)
 
 	mux := http.NewServeMux()
 
@@ -51,12 +75,15 @@ func main() {
 	userHandler.Register(mux)
 
 	// Wrap mux with middleware from the internal package
-	// Order: CORS -> Logging -> Mux
-	handler := middleware.CORSMiddleware(mux)
+	// Order: Rate Limit -> CORS -> Logging -> Mux
+	var handler http.Handler = mux
 	handler = middleware.LoggingMiddleware(handler)
+	handler = middleware.CORSMiddleware(handler)
+	handler = middleware.RateLimitMiddleware(10, 20)(handler)
 
 	fmt.Printf("Swiftly Backend running on http://localhost:%s\n", port)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
 }
+

@@ -49,7 +49,22 @@ type LoginRequest struct {
 	CaptchaToken string `json:"captcha_token"`
 }
 
+// TokenResponse encapsulates the security tokens issued upon successful authentication.
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+}
+
+// Session represents an active user session tracked in Redis.
+// It contains metadata about the device, location, and activity to help users manage their account security.
+type Session struct {
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	IPAddress    string    `json:"ip_address"`
+	UserAgent    string    `json:"user_agent"`
+	DeviceType   string    `json:"device_type"` // Categorized as 'Mobile' or 'Desktop'
+	Location     string    `json:"location"`    // Geographic location (e.g., 'Jakarta, Indonesia')
+	LastActiveAt time.Time `json:"last_active_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	IsCurrent    bool      `json:"is_current"` // True if this session matches the one used for the current request
 }

@@ -86,7 +86,7 @@ const handleSubmit = async () => {
             id="identifier"
           />
 
-          <BaseButton type="submit" :loading="isLoading" class="shadow-lg shadow-[#7b00ff]/20 mt-4">
+          <BaseButton type="submit" :loading="isLoading" class="w-full h-11 shadow-lg shadow-[#7b00ff]/20 mt-4">
             Send Reset Link
           </BaseButton>
         </form>
@@ -107,7 +107,7 @@ const handleSubmit = async () => {
         <p class="text-gray-400 text-sm leading-relaxed mb-8">
           If <span class="text-gray-900 font-bold">"{{ form.identifier }}"</span> is verified, we've sent reset instructions to <span class="text-[#7b00ff] font-bold">{{ emailHint }}</span>.
         </p>
-        <BaseButton variant="outline" @click="isSubmitted = false">
+        <BaseButton variant="outline" @click="isSubmitted = false" class="w-full h-11">
           Try another account
         </BaseButton>
         <div class="mt-8">

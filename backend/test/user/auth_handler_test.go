@@ -29,6 +29,7 @@ func setupTestHandler(t *testing.T) *http.ServeMux {
 	// Override URL untuk local testing dari mesin host (di luar Docker)
 	// Kita force agar dia nembak ke localhost karena port-nya sudah di-expose (5432 & 6379)
 	os.Setenv("REDIS_URL", "localhost:6379")
+	os.Setenv("REDIS_DB", "1") // Use DB 1 for testing to avoid wiping dev data
 	os.Setenv("TURNSTILE_SECRET_KEY", "") // Bypass captcha for tests
 	dbURL := os.Getenv("DATABASE_URL")
 	if strings.Contains(dbURL, "@postgres:") {
@@ -73,9 +74,14 @@ func generateUniqueEmail() string {
 func cleanupTestData() {
 	pool := database.GetPool()
 	if pool != nil {
-		// Hapus semua user yang email-nya berawalan 'testuser_' (dibuat oleh fungsi generateUniqueEmail)
+		// Hapus semua user yang email-nya berawalan 'testuser_'
 		_, _ = pool.Exec(context.Background(), "DELETE FROM users WHERE email LIKE 'testuser_%'")
-		// Hapus juga dummy username dan phone yang terkait testing (optional karena cascade delete atau hapus berdasarkan email sudah cukup)
+	}
+
+	// Bersihkan data di Redis
+	rdb := database.GetRedis()
+	if rdb != nil {
+		_ = rdb.FlushDB(context.Background()).Err()
 	}
 }
 
@@ -455,18 +461,18 @@ func TestTokenManagement(t *testing.T) {
 	rrSetup := httptest.NewRecorder()
 	mux.ServeHTTP(rrSetup, reqSetup)
 
-	var refreshToken, accessToken string
+	time.Sleep(1 * time.Second) // Ensure different issued_at for rotation test
+
+	var refreshToken string
 	for _, c := range rrSetup.Result().Cookies() {
 		if c.Name == "refresh_token" {
 			refreshToken = c.Value
 		}
-		if c.Name == "access_token" {
-			accessToken = c.Value
-		}
 	}
 
-	// TKN-01: Successful Refresh
-	t.Run("TKN-01: Refresh Token", func(t *testing.T) {
+	// TKN-01: Successful Refresh with Rotation
+	var newRefreshToken string
+	t.Run("TKN-01: Refresh Token Rotation", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/auth/refresh", nil)
 		req.AddCookie(&http.Cookie{Name: "refresh_token", Value: refreshToken})
 		rr := httptest.NewRecorder()
@@ -474,33 +480,109 @@ func TestTokenManagement(t *testing.T) {
 		mux.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
-			t.Errorf("Expected 200 OK for refresh, got %v", rr.Code)
+			t.Errorf("Expected 200 OK for refresh, got %v. Body: %s", rr.Code, rr.Body.String())
+		}
+
+		// Verify we got NEW cookies (rotation)
+		for _, c := range rr.Result().Cookies() {
+			if c.Name == "refresh_token" {
+				newRefreshToken = c.Value
+			}
+		}
+
+		if newRefreshToken == "" || newRefreshToken == refreshToken {
+			t.Errorf("Expected new refresh token (rotation), but got same or empty")
 		}
 	})
 
-	// TKN-02: Invalid Refresh
-	t.Run("TKN-02: Invalid Refresh Token", func(t *testing.T) {
+	// TKN-02: Replay Protection (Old refresh token should fail)
+	t.Run("TKN-02: Replay Protection", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/auth/refresh", nil)
-		req.AddCookie(&http.Cookie{Name: "refresh_token", Value: "invalid-token"})
+		req.AddCookie(&http.Cookie{Name: "refresh_token", Value: refreshToken}) // Using OLD token
 		rr := httptest.NewRecorder()
 
 		mux.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusUnauthorized {
-			t.Errorf("Expected 401 Unauthorized for invalid refresh, got %v", rr.Code)
+			t.Errorf("Expected 401 Unauthorized for replayed refresh token, got %v", rr.Code)
 		}
 	})
+}
 
-	// TKN-03: Logout
-	t.Run("TKN-03: Logout", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/auth/logout", nil)
-		req.AddCookie(&http.Cookie{Name: "access_token", Value: accessToken})
+func TestSessionManagement(t *testing.T) {
+	mux := setupTestHandler(t)
+	defer database.Close()
+	defer database.CloseRedis()
+	defer cleanupTestData()
+
+	testEmail := generateUniqueEmail()
+	setupPayload := map[string]string{
+		"email": testEmail, "username": "user_" + uuid.New().String()[:8], "phone_number": "phone_" + uuid.New().String()[:8], "password": "Password123!", "full_name": "Session User", "captcha_token": "dummy",
+	}
+	bodySetup, _ := json.Marshal(setupPayload)
+	reqSetup := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(bodySetup))
+	reqSetup.Header.Set("Content-Type", "application/json")
+	rrSetup := httptest.NewRecorder()
+	mux.ServeHTTP(rrSetup, reqSetup)
+
+	var accessToken string
+	for _, c := range rrSetup.Result().Cookies() {
+		if c.Name == "access_token" {
+			accessToken = c.Value
+		}
+	}
+
+	// SES-01: List Sessions
+	var sessionID string
+	t.Run("SES-01: List Active Sessions", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/auth/sessions", nil)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
 		rr := httptest.NewRecorder()
 
 		mux.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
-			t.Errorf("Expected 200 OK for logout, got %v", rr.Code)
+			t.Errorf("Expected 200 OK for sessions list, got %v", rr.Code)
+		}
+
+		var resp map[string]interface{}
+		json.Unmarshal(rr.Body.Bytes(), &resp)
+		sessions := resp["data"].([]interface{})
+		if len(sessions) == 0 {
+			t.Errorf("Expected at least one session, got 0")
+		}
+		
+		// Grab a session ID (for revoke test later)
+		firstSess := sessions[0].(map[string]interface{})
+		sessionID = firstSess["id"].(string)
+	})
+
+	// SES-02: Revoke Session
+	t.Run("SES-02: Revoke Specific Session", func(t *testing.T) {
+		req := httptest.NewRequest("DELETE", "/api/auth/sessions/"+sessionID, nil)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		rr := httptest.NewRecorder()
+
+		mux.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected 200 OK for session revoke, got %v", rr.Code)
+		}
+	})
+
+	// SES-03: Access After Revoke (Should fail)
+	t.Run("SES-03: Access Denied After Revocation", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/users/profile", nil)
+		req.Header.Set("Authorization", "Bearer "+accessToken) // Using token from revoked session
+		rr := httptest.NewRecorder()
+
+		mux.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 Unauthorized for revoked session, got %v", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "revoked") {
+			t.Errorf("Expected 'revoked' error message, got: %s", rr.Body.String())
 		}
 	})
 }

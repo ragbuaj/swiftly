@@ -125,7 +125,7 @@ onMounted(() => {
         </div>
         <h2 class="text-2xl font-extrabold text-gray-900 mb-3">Invalid Link</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">{{ apiError }}</p>
-        <BaseButton @click="router.push('/forgot-password')">
+        <BaseButton @click="router.push('/forgot-password')" class="w-full h-11">
           Request New Link
         </BaseButton>
       </div>
@@ -182,7 +182,7 @@ onMounted(() => {
             id="confirmPassword"
           />
 
-          <BaseButton type="submit" :loading="isLoading" :disabled="!isPasswordValid || !token" class="shadow-lg shadow-[#7b00ff]/20 mt-4">
+          <BaseButton type="submit" :loading="isLoading" :disabled="!isPasswordValid || !token" class="w-full h-11 shadow-lg shadow-[#7b00ff]/20 mt-4">
             Reset Password
           </BaseButton>
         </form>
@@ -197,7 +197,7 @@ onMounted(() => {
         <p class="text-gray-400 text-sm leading-relaxed mb-8">
           Your password has been successfully reset. You will be redirected to the login page in a few seconds.
         </p>
-        <BaseButton @click="router.push('/auth')">
+        <BaseButton @click="router.push('/auth')" class="w-full h-11">
           Go to Login Now
         </BaseButton>
       </div>

@@ -50,6 +50,11 @@ const routes: Array<RouteRecordRaw> = [
         path: 'settings',
         name: 'profile-settings',
         component: () => import('../views/profile/ProfileSettings.vue')
+      },
+      {
+        path: 'devices',
+        name: 'profile-devices',
+        component: () => import('../views/profile/DevicesView.vue')
       }
       // Future routes: /profile/orders, /profile/addresses can be added here
     ]
@@ -65,12 +70,24 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   
-  // Refresh user state on initial load if we don't have it but might have a cookie
-  if (!authStore.user && !authStore.isLoading) {
+  // Only attempt to fetch profile if:
+  // 1. We don't have a user yet
+  // 2. We aren't already loading
+  // 3. The target route is NOT a guest-only route (like /auth)
+  if (!authStore.user && !authStore.isLoading && !to.meta.requiresGuest) {
     await authStore.fetchUserProfile()
   }
 
   const isAuth = authStore.isAuthenticated
+
+  // If session just expired, we want to stay on the current page to show the popup
+  if (authStore.isSessionExpired) {
+    // We give a tiny delay to ensure interceptors have finished and store is updated
+    await new Promise(resolve => setTimeout(resolve, 100))
+    if (authStore.isSessionExpired) {
+      return next() // Stay here to show the popup
+    }
+  }
 
   if (to.meta.requiresAuth && !isAuth) {
     // Route requires login, but user is not logged in.

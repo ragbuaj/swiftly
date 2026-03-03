@@ -42,3 +42,21 @@ export interface CheckEmailResponse {
     available: boolean;
   };
 }
+
+export interface Session {
+  id: string;
+  user_id: string;
+  ip_address: string;
+  user_agent: string;
+  device_type: string;
+  location: string;
+  last_active_at: string;
+  expires_at: string;
+  is_current: boolean;
+}
+
+export interface SessionListResponse {
+  status: string;
+  message: string;
+  data: Session[];
+}

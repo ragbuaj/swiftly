@@ -4,9 +4,12 @@ Swiftly is a modern, high-performance e-commerce platform built with a robust Go
 
 ## 🚀 Features (In Development)
 
-- **User Authentication:** Secure Sign In, Register, and Google Login integration.
+- **User Authentication:** Secure Sign In, Register, Google Login, and Social Auth expansion (Facebook, X).
+- **User Profile:** Dedicated Dashboard for managing personal info, bio, and preferences.
+- **Avatar Management:** Deferred upload system with local preview and MinIO/S3 object storage integration.
 - **Account Recovery:** Advanced "Forgot Password" flow supporting Email, Username, or Phone Number.
-- **Security:** Token Blacklisting with Redis and full-stack input sanitization.
+- **Verification:** OTP-based Phone/Email verification loop.
+- **Security:** Token Blacklisting with Redis, full-stack input sanitization, and Bot Protection (Cloudflare Turnstile).
 - **Type Safety:** Full-stack type safety from Go backend to TypeScript frontend.
 
 ## 🛠 Tech Stack
@@ -15,51 +18,41 @@ Swiftly is a modern, high-performance e-commerce platform built with a robust Go
 - **Language:** Go 1.25.6
 - **Database:** PostgreSQL 17
 - **Caching/Security:** Redis (Alpine)
+- **Object Storage:** MinIO (S3-compatible)
 - **Hot Reload:** [Air](https://github.com/air-verse/air)
 
 ### Frontend
 - **Framework:** Vue 3 (TypeScript, Composition API)
+- **UI Library:** Shadcn-Vue (Radix UI) & Tailwind CSS v4
 - **State:** Pinia
-- **Styling:** Tailwind CSS v4
 - **Build Tool:** Vite
 
 ---
 
-## 🐳 Docker Workflow (Detailed Guide)
+## 💻 Development Workflow (Hybrid Mode)
 
-This project uses Docker Compose to orchestrate all services. Using Docker ensures that every developer has the exact same environment.
+For the best developer experience on Windows/macOS, we recommend running the **Backend & Infrastructure in Docker** and the **Frontend locally** on your host OS.
 
-### 1. Core Commands
+### 1. Infrastructure & Backend (Docker)
+Ensure Docker is running, then start the core services:
+```bash
+docker compose up -d
+```
+This starts: `PostgreSQL`, `Redis`, `MinIO`, and the `Go API`.
 
-| Action | Command |
-| :--- | :--- |
-| **Start Everything** | `docker compose up -d` |
-| **Start & Rebuild** | `docker compose up -d --build` |
-| **Stop Everything** | `docker compose down` |
-| **Stop & Wipe Data** | `docker compose down -v` |
-| **Check Status** | `docker compose ps` |
-| **View Logs** | `docker compose logs -f` |
+### 2. Frontend (Local)
+Run the Vite development server on your host machine for instant HMR and better performance:
+```bash
+cd frontend
+pnpm install
+pnpm run dev
+```
+*App will be available at: `http://localhost:5173`*
 
-### 2. Managing Individual Services
-You don't always need to restart everything. You can target specific services: `backend`, `frontend`, `redis`, or `migrate`.
-
-- **Rebuild only Backend:** `docker compose up -d --build backend`
-- **Rebuild only Frontend:** `docker compose up -d --build frontend`
-- **Restart Redis:** `docker compose restart redis`
-
-### 3. Database Migrations
-Migrations are handled by a dedicated `migrate` service.
-
-- **Run Up Migrations:** `docker compose run --rm migrate up`
-- **Rollback (Down):** `docker compose run --rm migrate down`
-- **Fix "Dirty" State:** `docker compose run --rm migrate force <version>`
-
-### 4. Interactive CLI Access
-Sometimes you need to run commands inside the containers:
-
-- **Redis CLI:** `docker compose exec redis redis-cli`
-- **Database (psql):** `docker compose exec db psql -U user -d swiftly`
-- **Backend Shell:** `docker compose exec backend sh`
+### 3. Object Storage (MinIO)
+Access the MinIO web console to manage buckets and uploaded files:
+*   **URL:** `http://localhost:9001`
+*   **Credentials:** `minioadmin` / `minioadmin`
 
 ---
 
@@ -67,29 +60,30 @@ Sometimes you need to run commands inside the containers:
 
 ### Prerequisites
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [Node.js](https://nodejs.org/) & [pnpm](https://pnpm.io/) (for local dev)
+- [Go 1.25.6+](https://go.dev/) (optional, for local testing)
+- [Node.js](https://nodejs.org/) & [pnpm](https://pnpm.io/) (required for frontend)
 
 ### Setup Steps
 
 1.  **Clone & Enter:**
     ```bash
-    git clone https://github.com/yourusername/swiftly.git
+    git clone https://github.com/ragbuaj/swiftly.git
     cd swiftly
     ```
 
 2.  **Environment Setup:**
     *   `cp backend/.env.sample backend/.env`
     *   `cp frontend/.env.example frontend/.env`
-    *   *Make sure to update `GOOGLE_CLIENT_ID` and `JWT_SECRET`.*
+    *   *Update `GOOGLE_CLIENT_ID`, `JWT_SECRET`, and `S3_PUBLIC_URL`.*
 
-3.  **Launch:**
+3.  **Database Migration:**
     ```bash
-    docker compose up -d --build
+    docker compose up migrate
     ```
 
-4.  **Migrate:**
+4.  **Launch Stack:**
     ```bash
-    docker compose run --rm migrate
+    docker compose up -d
     ```
 
 ---
@@ -101,11 +95,12 @@ Sometimes you need to run commands inside the containers:
 ├── backend/            # Go backend service
 │   ├── cmd/            # Entry points (API, Migrations)
 │   ├── internal/       # Modular logic (Handler, Service, Repository)
+│   ├── pkg/            # Shared internal packages (auth, storage, sanitizer)
 │   └── migrations/     # SQL migration files
 ├── frontend/           # Vue 3 TypeScript application
 │   ├── src/            # Components, stores, types, views
-│   └── types/          # Modular TypeScript interfaces
-├── docker-compose.yaml # Docker orchestration
+│   └── public/         # Static assets
+├── docker-compose.yaml # Infrastructure orchestration
 └── README.md           # Project documentation
 ```
 

@@ -12,6 +12,7 @@ import (
 	"swiftly/backend/internal/middleware"
 	"swiftly/backend/internal/pkg/response"
 	"swiftly/backend/internal/pkg/socialauth"
+	"swiftly/backend/internal/pkg/storage"
 	"swiftly/backend/internal/user/handler"
 	"swiftly/backend/internal/user/repository"
 	"swiftly/backend/internal/user/service"
@@ -38,13 +39,27 @@ func main() {
 	database.InitRedis()
 	defer database.CloseRedis()
 
+	// Initialize Storage
+	useSSL := os.Getenv("S3_USE_SSL") == "true"
+	uploader, err := storage.NewMinioUploader(
+		os.Getenv("S3_ENDPOINT"),
+		os.Getenv("S3_ACCESS_KEY"),
+		os.Getenv("S3_SECRET_KEY"),
+		os.Getenv("S3_BUCKET_NAME"),
+		os.Getenv("S3_PUBLIC_URL"),
+		useSSL,
+	)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize MinIO uploader: %v\n", err)
+	}
+
 	// Initialize Social Auth
 	socialRegistry := socialauth.NewRegistry()
 
 	// Initialize User Module
 	userRepo := repository.NewUserRepository(pool)
 	activityRepo := repository.NewActivityRepository(pool)
-	userService := service.NewService(userRepo, activityRepo)
+	userService := service.NewService(userRepo, activityRepo, uploader)
 	userHandler := handler.NewUserHandler(userService, socialRegistry)
 
 	mux := http.NewServeMux()
@@ -71,3 +86,4 @@ func main() {
 		log.Fatal(err)
 	}
 }
+

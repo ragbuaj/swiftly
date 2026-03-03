@@ -1,31 +1,48 @@
 <script setup lang="ts">
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { computed } from 'vue'
+
 interface Props {
   variant?: 'primary' | 'outline' | 'social';
+  size?: 'default' | 'sm' | 'lg' | 'icon';
   loading?: boolean;
   disabled?: boolean;
   type?: 'button' | 'submit' | 'reset';
+  class?: string;
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   variant: 'primary',
+  size: 'default',
   loading: false,
   disabled: false,
   type: 'button'
 });
+
+const shadcnVariant = computed(() => {
+  switch (props.variant) {
+    case 'primary': return 'default';
+    case 'outline': return 'outline';
+    case 'social': return 'outline';
+    default: return 'default';
+  }
+});
 </script>
 
 <template>
-  <button
+  <Button
     :type="type"
     :disabled="disabled || loading"
-    class="w-full h-11 px-6 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-    :class="{
-      'bg-[#7b00ff] text-white hover:bg-[#6a00e0] active:scale-[0.98]': variant === 'primary',
-      'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 active:scale-[0.98]': variant === 'outline',
-      'bg-white border border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50': variant === 'social'
-    }"
+    :variant="shadcnVariant"
+    :size="size"
+    :class="cn(
+      'w-full h-11 rounded-xl font-semibold active:scale-[0.98]',
+      variant === 'social' && 'hover:border-gray-300',
+      props.class
+    )"
   >
     <div v-if="loading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
     <slot v-else></slot>
-  </button>
+  </Button>
 </template>

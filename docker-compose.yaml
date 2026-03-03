@@ -29,21 +29,6 @@ services:
     networks:
       - swiftly-network
 
-  frontend:
-    build: 
-      context: ./frontend
-      target: development-stage
-    ports:
-      - "5173:5173" # Map to Vite dev port
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules # Don't overwrite node_modules from host
-    command: pnpm run dev
-    depends_on:
-      - backend
-    networks:
-      - swiftly-network
-
   redis:
     image: redis:alpine
     ports:
@@ -53,9 +38,38 @@ services:
     volumes:
       - redis-data:/data
 
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000" # Port API
+      - "9001:9001" # Port Web UI / Console
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    networks:
+      - swiftly-network
+    volumes:
+      - minio-data:/data
+
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    networks:
+      - swiftly-network
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/swiftly-storage --ignore-existing;
+      /usr/bin/mc anonymous set download myminio/swiftly-storage;
+      exit 0;
+      "
+
 networks:
   swiftly-network:
     driver: bridge
 
 volumes:
   redis-data:
+  minio-data:

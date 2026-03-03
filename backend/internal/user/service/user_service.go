@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"swiftly/backend/internal/pkg/captcha"
 	"swiftly/backend/internal/pkg/sanitizer"
 	"swiftly/backend/internal/pkg/socialauth"
+	"swiftly/backend/internal/pkg/storage"
 	"swiftly/backend/internal/user"
 	"swiftly/backend/internal/user/repository"
 
@@ -24,12 +26,14 @@ import (
 type Service struct {
 	repo         *repository.Repository
 	activityRepo *repository.ActivityRepository
+	uploader     storage.Uploader
 }
 
-func NewService(repo *repository.Repository, activityRepo *repository.ActivityRepository) *Service {
+func NewService(repo *repository.Repository, activityRepo *repository.ActivityRepository, uploader storage.Uploader) *Service {
 	return &Service{
 		repo:         repo,
 		activityRepo: activityRepo,
+		uploader:     uploader,
 	}
 }
 
@@ -68,6 +72,8 @@ func (s *Service) CreateUser(req user.CreateUserRequest) (*user.TokenResponse, e
 		PhoneNumber: cleanPhone,
 		FullName:    cleanFullName,
 		Password:    string(hashedPassword),
+		Role:        "customer",
+		Status:      "active",
 	}
 
 	err = s.repo.Create(u)
@@ -145,6 +151,10 @@ func (s *Service) Login(req user.LoginRequest) (*user.TokenResponse, error) {
 		return nil, errors.New("invalid email or password")
 	}
 
+	if u.Status != "active" {
+		return nil, errors.New("account is " + u.Status)
+	}
+
 	err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password))
 	if err != nil {
 		s.auditLog(u.ID, "LOGIN_FAILED", "", "", map[string]interface{}{"reason": "invalid_password"})
@@ -157,6 +167,7 @@ func (s *Service) Login(req user.LoginRequest) (*user.TokenResponse, error) {
 	}
 
 	s.auditLog(u.ID, "LOGIN_SUCCESS", "", "", nil)
+	s.ensureFullURL(u)
 
 	return &user.TokenResponse{
 		AccessToken:  accessToken,
@@ -188,10 +199,14 @@ func (s *Service) SocialLogin(socialUser *socialauth.SocialUser) (*user.TokenRes
 	u, err := s.repo.GetByEmail(cleanEmail)
 	if err != nil {
 		if err.Error() == "user not found" {
+			now := time.Now()
 			u = &user.User{
 				Email:    cleanEmail,
 				FullName: cleanFullName,
 				Password: "SOCIAL_AUTH_NO_PASSWORD",
+				Role:     "customer",
+				Status:   "active",
+				EmailVerifiedAt: &now,
 			}
 			err = s.repo.Create(u)
 			if err != nil {
@@ -201,6 +216,8 @@ func (s *Service) SocialLogin(socialUser *socialauth.SocialUser) (*user.TokenRes
 		} else {
 			return nil, err
 		}
+	} else if u.Status != "active" {
+		return nil, errors.New("account is " + u.Status)
 	}
 
 	accessToken, refreshToken, err := auth.GenerateTokens(u.ID)
@@ -209,6 +226,7 @@ func (s *Service) SocialLogin(socialUser *socialauth.SocialUser) (*user.TokenRes
 	}
 
 	s.auditLog(u.ID, "LOGIN_SUCCESS_SOCIAL", "", "", nil)
+	s.ensureFullURL(u)
 
 	return &user.TokenResponse{
 		AccessToken:  accessToken,
@@ -217,7 +235,86 @@ func (s *Service) SocialLogin(socialUser *socialauth.SocialUser) (*user.TokenRes
 }
 
 func (s *Service) GetUserByID(id string) (*user.User, error) {
-	return s.repo.GetByID(id)
+	u, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+	s.ensureFullURL(u)
+	return u, nil
+}
+
+// ensureFullURL memastikan avatar_url memiliki URL lengkap jika hanya tersimpan path relatifnya.
+func (s *Service) ensureFullURL(u *user.User) {
+	if u.AvatarURL != "" && !strings.HasPrefix(u.AvatarURL, "http") && s.uploader != nil {
+		u.AvatarURL = fmt.Sprintf("%s/%s", s.uploader.GetBaseURL(), u.AvatarURL)
+	}
+}
+
+
+func (s *Service) UpdateProfile(id string, req user.UpdateProfileRequest) error {
+	req.FullName = sanitizer.Text(req.FullName)
+	req.Username = sanitizer.Username(req.Username)
+	req.PhoneNumber = sanitizer.Phone(req.PhoneNumber)
+	req.Bio = sanitizer.Text(req.Bio)
+
+	if req.FullName == "" {
+		return errors.New("full name cannot be empty")
+	}
+
+	err := s.repo.UpdateProfile(id, &req)
+	if err != nil {
+		if strings.Contains(err.Error(), "users_username_key") {
+			return errors.New("username is already taken")
+		}
+		if strings.Contains(err.Error(), "users_phone_number_key") {
+			return errors.New("phone number is already taken")
+		}
+		return err
+	}
+
+	s.auditLog(id, "PROFILE_UPDATED", "", "", nil)
+	return nil
+}
+
+func (s *Service) UploadAvatar(ctx context.Context, userID string, file io.Reader, contentType string, size int64) (string, error) {
+	if s.uploader == nil {
+		return "", errors.New("storage uploader is not configured")
+	}
+
+	if size > 2*1024*1024 { // 2MB Limit
+		return "", errors.New("file size exceeds 2MB limit")
+	}
+
+	if contentType != "image/jpeg" && contentType != "image/png" && contentType != "image/webp" {
+		return "", errors.New("invalid file type, only JPEG, PNG and WebP are allowed")
+	}
+
+	ext := "jpg"
+	if contentType == "image/png" {
+		ext = "png"
+	} else if contentType == "image/webp" {
+		ext = "webp"
+	}
+
+	objectName := fmt.Sprintf("avatars/%s-%s.%s", userID, uuid.New().String()[:8], ext)
+
+	fileURL, err := s.uploader.UploadFile(ctx, file, objectName, contentType, size)
+	if err != nil {
+		return "", err
+	}
+
+	err = s.repo.UpdateAvatar(userID, fileURL)
+	if err != nil {
+		// Attempt to delete if db update fails
+		_ = s.uploader.DeleteFile(ctx, objectName)
+		return "", err
+	}
+
+	s.auditLog(userID, "AVATAR_UPDATED", "", "", nil)
+	
+	// Kembalikan URL lengkap untuk kebutuhan UI Frontend
+	fullURL := fmt.Sprintf("%s/%s", s.uploader.GetBaseURL(), fileURL)
+	return fullURL, nil
 }
 
 func (s *Service) Logout(token string) error {

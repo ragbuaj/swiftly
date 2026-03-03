@@ -50,7 +50,63 @@ func (h *UserHandler) Register(mux *http.ServeMux) {
 	
 	// Protected routes
 	mux.Handle("GET /api/users/profile", middleware.AuthMiddleware(http.HandlerFunc(h.GetUser)))
+	mux.Handle("PUT /api/users/profile", middleware.AuthMiddleware(http.HandlerFunc(h.UpdateProfile)))
+	mux.Handle("POST /api/users/profile/avatar", middleware.AuthMiddleware(http.HandlerFunc(h.UploadAvatar)))
 }
+
+func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(middleware.UserIDKey).(string)
+
+	var req user.UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid request body", nil)
+		return
+	}
+
+	err := h.service.UpdateProfile(userID, req)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	response.Success(w, http.StatusOK, "Profile updated successfully", nil)
+}
+
+func (h *UserHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(middleware.UserIDKey).(string)
+
+	// Limit request size to 5MB to prevent memory exhaustion
+	r.Body = http.MaxBytesReader(w, r.Body, 5<<20)
+
+	// Parse multipart form
+	err := r.ParseMultipartForm(5 << 20) 
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "File too large. Maximum size is 5MB", nil)
+		return
+	}
+
+	file, header, err := r.FormFile("avatar")
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Failed to get file from request", nil)
+		return
+	}
+	defer file.Close()
+
+	// Get file content type
+	contentType := header.Header.Get("Content-Type")
+	size := header.Size
+
+	fileURL, err := h.service.UploadAvatar(r.Context(), userID, file, contentType, size)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error(), nil)
+		return
+	}
+
+	response.Success(w, http.StatusOK, "Avatar uploaded successfully", map[string]string{
+		"avatar_url": fileURL,
+	})
+}
+
 
 func (h *UserHandler) ValidateResetToken(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
@@ -217,7 +273,7 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	tokens, err := h.service.CreateUser(req)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, err.Error(), nil)
+		response.Error(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 

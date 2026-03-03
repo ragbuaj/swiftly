@@ -72,6 +72,43 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function updateProfile(profileData: Partial<UpdateProfileRequest>) {
+    isLoading.value = true
+    error.value = null
+    try {
+      await api.put('/users/profile', profileData)
+      await fetchUserProfile()
+      return true
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to update profile'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function uploadAvatar(file: File) {
+    isLoading.value = true
+    error.value = null
+    try {
+      const formData = new FormData()
+      formData.append('avatar', file)
+      
+      await api.post('/users/profile/avatar', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+      await fetchUserProfile()
+      return true
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to upload avatar'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   async function logout() {
     try {
       await api.post('/auth/logout')
@@ -89,6 +126,8 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     loginWithGoogle,
     fetchUserProfile,
+    updateProfile,
+    uploadAvatar,
     logout 
   }
 })

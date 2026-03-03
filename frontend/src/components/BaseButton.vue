@@ -37,12 +37,12 @@ const shadcnVariant = computed(() => {
     :variant="shadcnVariant"
     :size="size"
     :class="cn(
-      'w-full h-11 rounded-xl font-semibold active:scale-[0.98]',
+      'font-semibold active:scale-[0.98] transition-all',
       variant === 'social' && 'hover:border-gray-300',
       props.class
     )"
   >
-    <div v-if="loading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+    <div v-if="loading" class="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
     <slot v-else></slot>
   </Button>
 </template>

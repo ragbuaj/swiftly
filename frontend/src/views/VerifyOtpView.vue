@@ -104,9 +104,10 @@ onMounted(() => {
           />
         </div>
 
-        <BaseButton type="submit" :loading="isLoading">
-          Verify Account
+        <BaseButton type="submit" :loading="isLoading" class="w-full h-11 shadow-lg shadow-[#7b00ff]/20">
+          Verify OTP
         </BaseButton>
+
       </form>
 
       <div class="mt-8">

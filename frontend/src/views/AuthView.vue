@@ -259,7 +259,7 @@ onMounted(() => {
           <div id="turnstile-container"></div>
         </div>
 
-        <BaseButton type="submit" :loading="authStore.isLoading" :disabled="!isFormValid" class="shadow-lg shadow-[#7b00ff]/20">{{ isLogin ? 'Sign In' : 'Create Account' }}</BaseButton>
+        <BaseButton type="submit" :loading="authStore.isLoading" :disabled="!isFormValid" class="w-full h-11 shadow-lg shadow-[#7b00ff]/20">{{ isLogin ? 'Sign In' : 'Create Account' }}</BaseButton>
       </form>
 
       <div class="relative my-8">

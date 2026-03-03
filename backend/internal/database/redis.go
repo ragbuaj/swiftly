@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -18,10 +19,17 @@ func InitRedis() {
 		redisURL = "localhost:6379"
 	}
 
+	db := 0
+	if dbStr := os.Getenv("REDIS_DB"); dbStr != "" {
+		if val, err := strconv.Atoi(dbStr); err == nil {
+			db = val
+		}
+	}
+
 	redisClient = redis.NewClient(&redis.Options{
 		Addr:     redisURL,
 		Password: "", // No password by default in dev
-		DB:       0,  // Use default DB
+		DB:       db,
 	})
 
 	// Test connection

@@ -12,6 +12,7 @@ import (
 type contextKey string
 
 const UserIDKey contextKey = "userID"
+const SessionIDKey contextKey = "sessionID"
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,23 +41,34 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// REDIS CHECK: Is token blacklisted?
-		ctx := context.Background()
-		rdb := database.GetRedis()
-		blacklisted, _ := rdb.Exists(ctx, "blacklist:"+tokenString).Result()
-		if blacklisted > 0 {
-			response.Error(w, http.StatusUnauthorized, "Session expired. Please login again.", nil)
-			return
-		}
-
-		// Validate Token
+		// Validate Token signature and claims
 		claims, err := auth.ValidateToken(tokenString)
 		if err != nil {
 			response.Error(w, http.StatusUnauthorized, err.Error(), nil)
 			return
 		}
 
+		// SECURITY CHECK: Verify token against Redis
+		ctx := r.Context()
+		rdb := database.GetRedis()
+		
+		// 1. Check if specific token is blacklisted (e.g., after manual logout)
+		blacklisted, _ := rdb.Exists(ctx, "blacklist:"+tokenString).Result()
+		if blacklisted > 0 {
+			response.Error(w, http.StatusUnauthorized, "Session expired. Please login again.", nil)
+			return
+		}
+
+		// 2. Check if the parent session still exists (e.g., after remote revocation)
+		sessionKey := "session:" + claims.UserID + ":" + claims.SessionID
+		exists, _ := rdb.Exists(ctx, sessionKey).Result()
+		if exists == 0 {
+			response.Error(w, http.StatusUnauthorized, "Session has been revoked", nil)
+			return
+		}
+
 		ctx = context.WithValue(r.Context(), UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, SessionIDKey, claims.SessionID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

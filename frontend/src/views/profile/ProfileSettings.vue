@@ -152,7 +152,7 @@ const handleSave = async () => {
       <BaseButton 
         v-if="!isEditing" 
         variant="outline" 
-        class="md:w-auto px-6"
+        class="md:w-auto px-6 h-11"
         @click="isEditing = true"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -318,7 +318,7 @@ const handleSave = async () => {
         <BaseButton 
           type="button" 
           variant="outline"
-          class="md:w-auto px-8"
+          class="w-full md:w-auto px-8 h-11"
           @click="cancelEdit"
           :disabled="isSaving"
         >
@@ -328,7 +328,7 @@ const handleSave = async () => {
           type="submit" 
           :is-loading="isSaving" 
           loading-text="Saving..."
-          class="md:w-auto px-8"
+          class="w-full md:w-auto px-8 h-11 shadow-lg shadow-[#7b00ff]/10"
         >
           Save Changes
         </BaseButton>

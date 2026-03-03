@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"swiftly/backend/internal/database"
@@ -41,7 +42,7 @@ func (s *Service) auditLog(userID, activityType, ip, userAgent string, metadata 
 	_ = s.activityRepo.Log(userID, activityType, ip, userAgent, metadata)
 }
 
-func (s *Service) CreateUser(req user.CreateUserRequest) (*user.TokenResponse, error) {
+func (s *Service) CreateUser(req user.CreateUserRequest, ip, userAgent string) (*user.TokenResponse, error) {
 	valid, err := captcha.VerifyToken(req.CaptchaToken)
 	if err != nil || !valid {
 		return nil, errors.New("bot detection failed. please try again")
@@ -82,12 +83,16 @@ func (s *Service) CreateUser(req user.CreateUserRequest) (*user.TokenResponse, e
 	}
 
 	s.GenerateAndStoreOTP(cleanEmail)
-	s.auditLog(u.ID, "USER_REGISTERED", "", "", nil)
+	s.auditLog(u.ID, "USER_REGISTERED", ip, userAgent, nil)
 
-	accessToken, refreshToken, err := auth.GenerateTokens(u.ID)
+	sessionID := uuid.New().String()
+	accessToken, refreshToken, err := auth.GenerateTokens(u.ID, sessionID)
 	if err != nil {
 		return nil, err
 	}
+
+	// Store session in Redis
+	s.storeSession(u.ID, sessionID, refreshToken, ip, userAgent)
 
 	return &user.TokenResponse{
 		AccessToken:  accessToken,
@@ -138,7 +143,7 @@ func (s *Service) VerifyOTP(email, otp string) error {
 	return nil
 }
 
-func (s *Service) Login(req user.LoginRequest) (*user.TokenResponse, error) {
+func (s *Service) Login(req user.LoginRequest, ip, userAgent string) (*user.TokenResponse, error) {
 	valid, err := captcha.VerifyToken(req.CaptchaToken)
 	if err != nil || !valid {
 		return nil, errors.New("bot detection failed. please try again")
@@ -157,16 +162,18 @@ func (s *Service) Login(req user.LoginRequest) (*user.TokenResponse, error) {
 
 	err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password))
 	if err != nil {
-		s.auditLog(u.ID, "LOGIN_FAILED", "", "", map[string]interface{}{"reason": "invalid_password"})
+		s.auditLog(u.ID, "LOGIN_FAILED", ip, userAgent, map[string]interface{}{"reason": "invalid_password"})
 		return nil, errors.New("invalid email or password")
 	}
 
-	accessToken, refreshToken, err := auth.GenerateTokens(u.ID)
+	sessionID := uuid.New().String()
+	accessToken, refreshToken, err := auth.GenerateTokens(u.ID, sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	s.auditLog(u.ID, "LOGIN_SUCCESS", "", "", nil)
+	s.storeSession(u.ID, sessionID, refreshToken, ip, userAgent)
+	s.auditLog(u.ID, "LOGIN_SUCCESS", ip, userAgent, nil)
 	s.ensureFullURL(u)
 
 	return &user.TokenResponse{
@@ -175,16 +182,46 @@ func (s *Service) Login(req user.LoginRequest) (*user.TokenResponse, error) {
 	}, nil
 }
 
-func (s *Service) RefreshToken(refreshToken string) (*user.TokenResponse, error) {
-	claims, err := auth.ValidateToken(refreshToken)
+// RefreshToken handles the rotation of refresh tokens and provides replay protection.
+// It verifies the old token, checks if it has been blacklisted (indicating reuse),
+// and issues a new pair of tokens if the session is still active.
+func (s *Service) RefreshToken(oldRefreshToken, ip, userAgent string) (*user.TokenResponse, error) {
+	claims, err := auth.ValidateToken(oldRefreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	accessToken, newRefreshToken, err := auth.GenerateTokens(claims.UserID)
+	ctx := context.Background()
+	rdb := database.GetRedis()
+
+	// 1. Check for Refresh Token Reuse (Replay Protection)
+	// If the token is found in the blacklist, it means it has been used before.
+	blacklisted, _ := rdb.Exists(ctx, "blacklist:"+oldRefreshToken).Result()
+	if blacklisted > 0 {
+		// DANGER: Refresh token reuse detected! This usually means the token was stolen.
+		// As a security precaution, we revoke ALL active sessions for this user.
+		s.RevokeAllSessions(claims.UserID)
+		return nil, errors.New("security alert: session compromised. please login again")
+	}
+
+	// 2. Validate that the specific session still exists in Redis
+	sessionKey := fmt.Sprintf("session:%s:%s", claims.UserID, claims.SessionID)
+	exists, _ := rdb.Exists(ctx, sessionKey).Result()
+	if exists == 0 {
+		return nil, errors.New("session expired or revoked")
+	}
+
+	// 3. Generate new token pair (Rotation)
+	accessToken, newRefreshToken, err := auth.GenerateTokens(claims.UserID, claims.SessionID)
 	if err != nil {
 		return nil, err
 	}
+
+	// 4. Update the session in Redis and blacklist the consumed refresh token
+	s.storeSession(claims.UserID, claims.SessionID, newRefreshToken, ip, userAgent)
+	
+	// Blacklist the old token for 7 days (matching its max lifetime) to prevent replay
+	rdb.Set(ctx, "blacklist:"+oldRefreshToken, "true", 7*24*time.Hour)
 
 	return &user.TokenResponse{
 		AccessToken:  accessToken,
@@ -192,7 +229,7 @@ func (s *Service) RefreshToken(refreshToken string) (*user.TokenResponse, error)
 	}, nil
 }
 
-func (s *Service) SocialLogin(socialUser *socialauth.SocialUser) (*user.TokenResponse, error) {
+func (s *Service) SocialLogin(socialUser *socialauth.SocialUser, ip, userAgent string) (*user.TokenResponse, error) {
 	cleanEmail := sanitizer.Email(socialUser.Email)
 	cleanFullName := sanitizer.Text(socialUser.FullName)
 
@@ -212,7 +249,7 @@ func (s *Service) SocialLogin(socialUser *socialauth.SocialUser) (*user.TokenRes
 			if err != nil {
 				return nil, err
 			}
-			s.auditLog(u.ID, "USER_REGISTERED_SOCIAL", "", "", nil)
+			s.auditLog(u.ID, "USER_REGISTERED_SOCIAL", ip, userAgent, nil)
 		} else {
 			return nil, err
 		}
@@ -220,18 +257,149 @@ func (s *Service) SocialLogin(socialUser *socialauth.SocialUser) (*user.TokenRes
 		return nil, errors.New("account is " + u.Status)
 	}
 
-	accessToken, refreshToken, err := auth.GenerateTokens(u.ID)
+	sessionID := uuid.New().String()
+	accessToken, refreshToken, err := auth.GenerateTokens(u.ID, sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	s.auditLog(u.ID, "LOGIN_SUCCESS_SOCIAL", "", "", nil)
+	s.storeSession(u.ID, sessionID, refreshToken, ip, userAgent)
+	s.auditLog(u.ID, "LOGIN_SUCCESS_SOCIAL", ip, userAgent, nil)
 	s.ensureFullURL(u)
 
 	return &user.TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
+}
+
+func (s *Service) storeSession(userID, sessionID, refreshToken, ip, userAgent string) {
+	ctx := context.Background()
+	rdb := database.GetRedis()
+	
+	session := user.Session{
+		ID:           sessionID,
+		UserID:       userID,
+		IPAddress:    ip,
+		UserAgent:    userAgent,
+		LastActiveAt: time.Now(),
+		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+	}
+
+	// Dynamic Location Detection
+	session.Location = s.GetLocationFromIP(ip)
+
+	if strings.Contains(strings.ToLower(userAgent), "mobile") {
+		session.DeviceType = "Mobile"
+	} else {
+		session.DeviceType = "Desktop"
+	}
+
+	data, _ := json.Marshal(session)
+	sessionKey := fmt.Sprintf("session:%s:%s", userID, sessionID)
+	rdb.Set(ctx, sessionKey, data, 7*24*time.Hour)
+}
+
+func (s *Service) GetLocationFromIP(ip string) string {
+	// Clean IP from port if present (e.g., "172.18.0.1:60714")
+	cleanIP := strings.Split(ip, ":")[0]
+
+	// 1. Handle Localhost
+	if cleanIP == "127.0.0.1" || cleanIP == "::1" || cleanIP == "" {
+		return "Localhost (Dev)"
+	}
+
+	// 2. Handle Private/Internal IP Ranges (RFC 1918 & Docker)
+	// 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+	if strings.HasPrefix(cleanIP, "10.") || 
+	   strings.HasPrefix(cleanIP, "192.168.") ||
+	   (strings.HasPrefix(cleanIP, "172.") && s.isPrivate172(cleanIP)) {
+		return "Internal Network (Docker/VPN)"
+	}
+
+	// 3. Use ip-api.com for Public IPs
+	url := fmt.Sprintf("http://ip-api.com/json/%s?fields=city,country", cleanIP)
+	
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "Unknown Location"
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		City    string `json:"city"`
+		Country string `json:"country"`
+		Status  string `json:"status"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || result.Status == "fail" {
+		return "Unknown Location"
+	}
+
+	if result.City != "" && result.Country != "" {
+		return fmt.Sprintf("%s, %s", result.City, result.Country)
+	}
+	
+	return "Unknown Location"
+}
+
+// Helper to check if 172.x IP is in the private range 172.16.0.0 - 172.31.255.255
+func (s *Service) isPrivate172(ip string) bool {
+	parts := strings.Split(ip, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	secondOctet, _ := strconv.Atoi(parts[1])
+	return secondOctet >= 16 && secondOctet <= 31
+}
+
+func (s *Service) GetActiveSessions(userID, currentSessionID string) ([]user.Session, error) {
+	ctx := context.Background()
+	rdb := database.GetRedis()
+	
+	pattern := fmt.Sprintf("session:%s:*", userID)
+	keys, err := rdb.Keys(ctx, pattern).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	sessions := make([]user.Session, 0)
+	for _, key := range keys {
+		data, err := rdb.Get(ctx, key).Result()
+		if err != nil {
+			continue
+		}
+
+		var sess user.Session
+		if err := json.Unmarshal([]byte(data), &sess); err != nil {
+			continue
+		}
+
+		if sess.ID == currentSessionID {
+			sess.IsCurrent = true
+		}
+		sessions = append(sessions, sess)
+	}
+	return sessions, nil
+}
+
+func (s *Service) RevokeSession(userID, sessionID string) error {
+	ctx := context.Background()
+	rdb := database.GetRedis()
+	sessionKey := fmt.Sprintf("session:%s:%s", userID, sessionID)
+	return rdb.Del(ctx, sessionKey).Err()
+}
+
+func (s *Service) RevokeAllSessions(userID string) error {
+	ctx := context.Background()
+	rdb := database.GetRedis()
+	pattern := fmt.Sprintf("session:%s:*", userID)
+	keys, _ := rdb.Keys(ctx, pattern).Result()
+	if len(keys) > 0 {
+		return rdb.Del(ctx, keys...).Err()
+	}
+	return nil
 }
 
 func (s *Service) GetUserByID(id string) (*user.User, error) {
@@ -409,7 +577,7 @@ func (s *Service) ResetPassword(token, newPassword string) error {
 	return nil
 }
 
-func (s *Service) LoginWithGoogleToken(idToken string) (*user.TokenResponse, error) {
+func (s *Service) LoginWithGoogleToken(idToken, ip, userAgent string) (*user.TokenResponse, error) {
 	// 1. Verify token with Google API
 	// Documentation: https://developers.google.com/identity/gsi/web/guides/verify-google-id-token
 	verifyURL := fmt.Sprintf("https://oauth2.googleapis.com/tokeninfo?id_token=%s", idToken)
@@ -442,5 +610,5 @@ func (s *Service) LoginWithGoogleToken(idToken string) (*user.TokenResponse, err
 	}
 
 	// 3. Process social login (create if not exists, then return tokens)
-	return s.SocialLogin(socialUser)
+	return s.SocialLogin(socialUser, ip, userAgent)
 }

@@ -60,6 +60,7 @@ pnpm run dev
 ## Development Conventions
 - **Backend:** Follow standard Go idioms. Logic should be organized within the internal/ directory. Use interface-based design for external services (e.g., storage.Uploader).
 - **Frontend:** Use Vue 3 <script setup> syntax for Single File Components (SFCs).
+- **Reusable Components:** Always strive to create modular, reusable UI components (in the frontend) or helper functions (in the backend) whenever a piece of UI or logic is likely to be used in more than one place. Avoid code duplication by abstracting common patterns.
 
 ## Development Workflow
 - **Testing Mandate**: Always create, update, or perfect test cases whenever adding a new function, modifying an existing feature, or fixing a bug. Never consider a task complete without comprehensive test coverage (positive and negative cases) for the newly introduced logic, and always implement a cleanup mechanism for test data.

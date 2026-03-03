@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"swiftly/backend/internal/middleware"
+	"swiftly/backend/internal/pkg/auth"
 	"swiftly/backend/internal/pkg/response"
 	"swiftly/backend/internal/pkg/socialauth"
 	"swiftly/backend/internal/user"
@@ -30,6 +31,10 @@ func (h *UserHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/login", h.Login)
 	mux.HandleFunc("POST /api/auth/refresh", h.RefreshToken)
 	mux.HandleFunc("POST /api/auth/logout", h.Logout)
+	
+	// Session Management
+	mux.Handle("GET /api/auth/sessions", middleware.AuthMiddleware(http.HandlerFunc(h.GetSessions)))
+	mux.Handle("DELETE /api/auth/sessions/{id}", middleware.AuthMiddleware(http.HandlerFunc(h.RevokeSession)))
 	
 	// Password Recovery (MUST be before social wildcard to avoid conflict)
 	mux.HandleFunc("POST /api/auth/forgot-password", h.ForgotPassword)
@@ -242,7 +247,10 @@ func (h *UserHandler) SocialCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	token, _ := provider.Exchange(r.Context(), code)
 	socialUser, _ := provider.GetUser(r.Context(), token)
-	tokens, _ := h.service.SocialLogin(socialUser)
+	
+	ip := r.RemoteAddr
+	userAgent := r.UserAgent()
+	tokens, _ := h.service.SocialLogin(socialUser, ip, userAgent)
 
 	h.setAuthCookies(w, tokens)
 	frontendURL := os.Getenv("FRONTEND_URL")
@@ -271,7 +279,9 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := h.service.CreateUser(req)
+	ip := r.RemoteAddr
+	userAgent := r.UserAgent()
+	tokens, err := h.service.CreateUser(req, ip, userAgent)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error(), nil)
 		return
@@ -288,7 +298,9 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := h.service.Login(req)
+	ip := r.RemoteAddr
+	userAgent := r.UserAgent()
+	tokens, err := h.service.Login(req, ip, userAgent)
 	if err != nil {
 		response.Error(w, http.StatusUnauthorized, err.Error(), nil)
 		return
@@ -314,14 +326,52 @@ func (h *UserHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := h.service.RefreshToken(refreshStr)
+	ip := r.RemoteAddr
+	userAgent := r.UserAgent()
+	tokens, err := h.service.RefreshToken(refreshStr, ip, userAgent)
 	if err != nil {
-		response.Error(w, http.StatusUnauthorized, "Invalid refresh token", nil)
+		response.Error(w, http.StatusUnauthorized, err.Error(), nil)
 		return
 	}
 
 	h.setAuthCookies(w, tokens)
 	response.Success(w, http.StatusOK, "Token refreshed successfully", nil)
+}
+
+func (h *UserHandler) GetSessions(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(middleware.UserIDKey).(string)
+	
+	// We need SessionID from token to mark "current"
+	token := ""
+	cookie, err := r.Cookie("access_token")
+	if err == nil { token = cookie.Value }
+	
+	sessionID := ""
+	claims, err := auth.ValidateToken(token)
+	if err == nil {
+		sessionID = claims.SessionID
+	}
+
+	sessions, err := h.service.GetActiveSessions(userID, sessionID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to retrieve sessions", nil)
+		return
+	}
+
+	response.Success(w, http.StatusOK, "Sessions retrieved successfully", sessions)
+}
+
+func (h *UserHandler) RevokeSession(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(middleware.UserIDKey).(string)
+	sessionID := r.PathValue("id")
+
+	err := h.service.RevokeSession(userID, sessionID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to revoke session", nil)
+		return
+	}
+
+	response.Success(w, http.StatusOK, "Session revoked successfully", nil)
 }
 
 func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -357,7 +407,9 @@ func (h *UserHandler) GoogleTokenLogin(w http.ResponseWriter, r *http.Request) {
 	// But let's assume we are calling service to handle it.
 	
 	// Since we need to validate IDToken, we need to implement it in Service
-	tokens, err := h.service.LoginWithGoogleToken(req.IDToken)
+	ip := r.RemoteAddr
+	userAgent := r.UserAgent()
+	tokens, err := h.service.LoginWithGoogleToken(req.IDToken, ip, userAgent)
 	if err != nil {
 		response.Error(w, http.StatusUnauthorized, err.Error(), nil)
 		return

@@ -63,6 +63,13 @@ pnpm run dev
 - **Reusable Components:** Always strive to create modular, reusable UI components (in the frontend) or helper functions (in the backend) whenever a piece of UI or logic is likely to be used in more than one place. Avoid code duplication by abstracting common patterns.
 
 ## Development Workflow
+- **Collaboration Protocol**:
+    1. Before writing code, describe the approach and wait for approval.
+    2. If requirements are ambiguous, ask clarifying questions before writing code.
+    3. After finishing writing code, list possible edge cases and propose test cases for them.
+    4. If a task requires changes to more than 3 files, stop and split it into smaller tasks first.
+    5. If a bug is reported, start by writing a reproduction test case, then fix it until the test passes.
+    6. Upon receiving a correction, reflect on the error and propose a plan to prevent recurrence.
 - **Testing Mandate**: Always create, update, or perfect test cases whenever adding a new function, modifying an existing feature, or fixing a bug. Never consider a task complete without comprehensive test coverage (positive and negative cases) for the newly introduced logic, and always implement a cleanup mechanism for test data.
 - **PowerShell Compatibility**: When executing shell commands on this project (which uses a Windows environment), **never use the && operator** to chain commands. Always use the semicolon ; as the statement separator instead.
 - **Reusable Components**: Always strive to create modular, reusable UI components (in the frontend) or helper functions (in the backend) whenever a piece of UI or logic is likely to be used in more than one place. Avoid code duplication by abstracting common patterns.

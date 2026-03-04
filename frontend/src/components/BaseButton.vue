@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { computed } from 'vue'
 
 interface Props {
-  variant?: 'primary' | 'outline' | 'social';
+  variant?: 'primary' | 'outline' | 'social' | 'danger';
   size?: 'default' | 'sm' | 'lg' | 'icon';
   loading?: boolean;
   disabled?: boolean;
@@ -23,6 +23,7 @@ const props = withDefaults(defineProps<Props>(), {
 const shadcnVariant = computed(() => {
   switch (props.variant) {
     case 'primary': return 'default';
+    case 'danger': return 'destructive';
     case 'outline': return 'outline';
     case 'social': return 'outline';
     default: return 'default';

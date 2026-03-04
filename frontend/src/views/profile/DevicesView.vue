@@ -2,37 +2,79 @@
 import { ref, onMounted } from 'vue';
 import { useAuthStore } from '../../stores/auth';
 import BaseButton from '../../components/BaseButton.vue';
+import BaseModal from '../../components/BaseModal.vue';
 import SessionCard from '../../components/SessionCard.vue';
 
 const authStore = useAuthStore();
 const isRevoking = ref<string | null>(null);
 
+// Modal state
+const modalConfig = ref({
+  open: false,
+  title: '',
+  description: '',
+  onConfirm: () => {},
+  isLoading: false,
+});
+
 onMounted(() => {
   authStore.fetchSessions();
 });
 
-const handleRevokeSession = async (sessionID: string) => {
-  if (!confirm('Are you sure you want to log out this device?')) return;
-  isRevoking.value = sessionID;
-  try {
-    await authStore.revokeSession(sessionID);
-  } finally {
-    isRevoking.value = null;
-  }
+const handleRevokeSession = (sessionID: string) => {
+  modalConfig.value = {
+    open: true,
+    title: 'Logout device?',
+    description: 'Are you sure you want to log out this device? You will need to sign in again to access your account from this device.',
+    isLoading: false,
+    onConfirm: async () => {
+      modalConfig.value.isLoading = true;
+      isRevoking.value = sessionID;
+      try {
+        await authStore.revokeSession(sessionID);
+        modalConfig.value.open = false;
+      } finally {
+        isRevoking.value = null;
+        modalConfig.value.isLoading = false;
+      }
+    },
+  };
 };
 
-const handleRevokeAllOthers = async () => {
-  if (!confirm('This will log you out from all other devices. Continue?')) return;
-  
-  const others = authStore.activeSessions.filter(s => !s.is_current);
-  for (const s of others) {
-    await authStore.revokeSession(s.id);
-  }
+const handleRevokeAllOthers = () => {
+  modalConfig.value = {
+    open: true,
+    title: 'Logout all other devices?',
+    description: 'This will log you out from all your other active sessions. This action cannot be undone.',
+    isLoading: false,
+    onConfirm: async () => {
+      modalConfig.value.isLoading = true;
+      try {
+        const others = authStore.activeSessions.filter(s => !s.is_current);
+        for (const s of others) {
+          await authStore.revokeSession(s.id);
+        }
+        modalConfig.value.open = false;
+      } finally {
+        modalConfig.value.isLoading = false;
+      }
+    },
+  };
 };
 </script>
 
 <template>
   <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <!-- Logout Confirmation Modal -->
+    <BaseModal
+      v-model:open="modalConfig.open"
+      :title="modalConfig.title"
+      :description="modalConfig.description"
+      :is-loading="modalConfig.isLoading"
+      confirm-text="Logout Device"
+      variant="danger"
+      @confirm="modalConfig.onConfirm"
+    />
     <!-- Header Section -->
     <div class="p-6 md:p-8 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50/30">
       <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">

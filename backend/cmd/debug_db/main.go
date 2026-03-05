@@ -35,7 +35,6 @@ func main() {
 		if err := rows.Scan(&tableName); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf(" - %s
-", tableName)
+		fmt.Printf(" - %s", tableName)
 	}
 }

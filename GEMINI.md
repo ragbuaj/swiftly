@@ -5,72 +5,42 @@ Swiftly is a full-stack e-commerce web application featuring a Go-based backend,
 ## Full Project Architecture
 
 ### 1. Backend (/backend)
+
 - **Language:** Go 1.25.6
-- **Framework:** Standard library (
-et/http) with custom routing.
-- **Authentication:** JWT (JSON Web Tokens) with Access & Refresh tokens, OTP via Email/Phone, Google Social Auth.
-- **Structure:**
-  - cmd/api/: Application entry point and dependency injection.
-  - cmd/migrate/: Database migration runner.
-  - internal/database/: Database (PostgreSQL) and Redis connection managers.
-  - internal/middleware/: HTTP middlewares (Auth, Rate Limiting, CORS, Logging).
-  - internal/user/: User domain module (Handlers, Services, Repositories, Models).
-  - internal/pkg/: Shared utilities (auth, captcha, response format, sanitizer, socialauth, storage).
-  - migrations/: SQL up/down migration files.
+- **Framework:** Standard library (net/http) with custom routing.
+- **Architecture (Modular Clean Architecture):**
+  - **`internal/app`**: Dependency Container (App struct) for managing global resources (DB, S3, Redis).
+  - **`internal/api/routes`**: Centralized route registration for all modules.
+  - **`internal/config`**: Structured and validated configuration management (Fail-Fast).
+  - **`internal/pkg/apperror`**: Domain-Driven Error Handling (Mapping domain errors to HTTP).
+  - **`internal/pkg/validator`**: Centralized struct validation using `go-playground/validator`.
+  - **`internal/database`**: Atomic transaction support via `WithTransaction` helper.
+- **Standard Library Hooks:** Uses `log/slog` for structured logging.
 
 ### 2. Frontend (/frontend)
+
 - **Framework:** Vue 3 (Composition API) with TypeScript.
 - **UI Library:** Shadcn-Vue (based on Radix Vue/Reka UI) and Tailwind CSS v4.
 - **Build Tool:** Vite.
 - **Package Manager:** pnpm.
-- **State Management:** Pinia (e.g., stores/auth.ts).
-- **Routing:** Vue Router with Protected Routes.
-- **Architecture:** Component-based UI with API integration layers (src/api).
-- **Development Mode:** Run locally on host OS (Windows) for optimal performance.
+- **State Management:** Pinia.
 
 ### 3. Infrastructure & Services (Dockerized)
-- **Database:** PostgreSQL for persistent relational data (Users, Products, Orders, etc.).
-- **Cache & Session:** Redis for Token Blacklisting (Logout), OTP caching, and Password Reset tokens.
-- **Object Storage:** MinIO (S3-compatible) for handling file uploads (Avatars, Product Images).
-- **Orchestration:** docker-compose.yaml manages ackend (with Air for hot-reload), edis, minio, and migrate services.
 
-## Getting Started
-
-### Prerequisites
-- Docker and Docker Compose
-- Go 1.25.6 or later (for local dev)
-- Node.js and pnpm (for frontend dev)
-
-### Building and Running
-1. Start the infrastructure and backend using Docker:
-`ash
-docker-compose up -d
-`
-2. Start the frontend development server locally on Windows:
-`ash
-cd frontend
-pnpm install
-pnpm run dev
-`
-
-- **Backend API:** http://localhost:8080
-- **Frontend App:** http://localhost:5173
-- **MinIO Console:** http://localhost:9001 (User/Pass: minioadmin)
-
-## Development Conventions
-- **Backend:** Follow standard Go idioms. Logic should be organized within the internal/ directory. Use interface-based design for external services (e.g., storage.Uploader).
-- **Frontend:** Use Vue 3 <script setup> syntax for Single File Components (SFCs).
-- **Reusable Components:** Always strive to create modular, reusable UI components (in the frontend) or helper functions (in the backend) whenever a piece of UI or logic is likely to be used in more than one place. Avoid code duplication by abstracting common patterns.
+- **Database:** PostgreSQL for persistent relational data.
+- **Cache & Session:** Redis for Token Blacklisting, OTP, and session management.
+- **Object Storage:** MinIO (S3-compatible) for handling file uploads.
 
 ## Development Workflow
+
 - **Collaboration Protocol**:
-    1. Before writing code, describe the approach and wait for approval.
-    2. If requirements are ambiguous, ask clarifying questions before writing code.
-    3. After finishing writing code, list possible edge cases and propose test cases for them.
-    4. If a task requires changes to more than 3 files, stop and split it into smaller tasks first.
-    5. If a bug is reported, start by writing a reproduction test case, then fix it until the test passes.
-    6. Upon receiving a correction, reflect on the error and propose a plan to prevent recurrence.
-- **Testing Mandate**: Always create, update, or perfect test cases whenever adding a new function, modifying an existing feature, or fixing a bug. Never consider a task complete without comprehensive test coverage (positive and negative cases) for the newly introduced logic, and always implement a cleanup mechanism for test data.
-- **PowerShell Compatibility**: When executing shell commands on this project (which uses a Windows environment), **never use the && operator** to chain commands. Always use the semicolon ; as the statement separator instead.
-- **Reusable Components**: Always strive to create modular, reusable UI components (in the frontend) or helper functions (in the backend) whenever a piece of UI or logic is likely to be used in more than one place. Avoid code duplication by abstracting common patterns.
-- **Environment Templates**: Always update `.env.sample` (backend) or `.env.example` (frontend) whenever a new environment variable is introduced. This ensures that the configuration templates remain in sync with the application's requirements.
+  1. Sebelum menulis kode, jelaskan pendekatan yang akan diambil dan tunggu persetujuan.
+  2. Jika persyaratan ambigu, ajukan pertanyaan klarifikasi sebelum menulis kode.
+  3. Setelah selesai menulis kode, daftar kemungkinan edge cases dan usulkan test case untuknya.
+  4. Jika tugas memerlukan perubahan pada lebih dari 3 file, berhenti dan bagi menjadi tugas-tugas yang lebih kecil terlebih dahulu.
+  5. Jika bug dilaporkan, mulai dengan menulis reproduction test case, lalu perbaiki hingga tes tersebut lulus.
+- **Testing Mandate**: Selalu buat, perbarui, atau sempurnakan test case setiap kali ada perubahan kode. Tugas belum selesai tanpa cakupan tes yang komprehensif.
+- **Syntax Integrity**: **Selalu lakukan pengecekan syntax** (misal `go build` atau `tsc`) setiap kali ada penambahan atau perubahan kode.
+- **Test-Driven Correction**: Jika test case gagal, lakukan analisis mendalam mengapa gagal, lalu usulkan rencana perbaikan kepada user sebelum melanjutkan.
+- **PowerShell Compatibility**: Gunakan titik koma `;` untuk pemisah perintah (jangan gunakan `&&`).
+- **Environment Templates**: Perbarui `.env.sample` (backend) atau `.env.sample` (frontend) saat menambahkan variabel lingkungan baru.

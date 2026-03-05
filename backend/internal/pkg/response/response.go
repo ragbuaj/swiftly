@@ -3,6 +3,7 @@ package response
 import (
 	"encoding/json"
 	"net/http"
+	"swiftly/backend/internal/pkg/apperror"
 )
 
 // APIResponse represents the standard structure for all API responses
@@ -36,4 +37,10 @@ func Success(w http.ResponseWriter, statusCode int, message string, data interfa
 // Error is a helper for error responses
 func Error(w http.ResponseWriter, statusCode int, message string, errors interface{}) {
 	JSON(w, statusCode, false, message, nil, errors)
+}
+
+// HandleError automatically maps domain errors to the correct HTTP response
+func HandleError(w http.ResponseWriter, err error) {
+	status, message, details := apperror.MapToHTTP(err)
+	Error(w, status, message, details)
 }
